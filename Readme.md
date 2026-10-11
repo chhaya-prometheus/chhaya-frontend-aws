@@ -1,7 +1,9 @@
-# Chhaya: where should Delhi plant trees first?
+# Chhaya: where should cities plant trees first?
 
-Chhaya (छाया, "shade") is a map of Delhi split into hexagonal cells, coloured by how urgently each one needs trees. Click a cell to see the numbers behind its score, search a ward, switch the colour layer, or plan where a given amount of planting land would do the most good.
+Chhaya (छाया, "shade") is a map of a city split into hexagonal cells, coloured by how urgently each one needs trees. Click a cell to see the numbers behind its score, search a ward, switch the colour layer, or plan where a given amount of planting land would do the most good.
 
+> **Real vs demo data.** Delhi is real data with ward names. Other cities are demo cities: a boundary-only grid with synthetic values and no wards. Demo cities are labelled "Demo data (synthetic)" in the header, legend and detail panel, and their numbers are never real findings.
+>
 > **Honest claims.** The priority score is a proxy built from satellite and census data, not a measurement. Trees cool the surface; they do not clean the air. Every what-if figure is a model estimate.
 
 <!-- Add a screenshot: save it as docs/screenshot.png and uncomment the next line.
@@ -10,9 +12,10 @@ Chhaya (छाया, "shade") is a map of Delhi split into hexagonal cells, col
 
 ## What you can do
 
-- See all of Delhi coloured by planting priority, with a legend
+- Switch city from a dropdown (the choice is kept in the link as `?city=...`)
+- See a whole city coloured by planting priority, with a legend
 - Click a hexagon for temperature, greenery, built-up share, dust, people and schools
-- Search a ward or area; its hexagons are outlined and a ward summary opens
+- Search a ward (cities with wards only); its hexagons are outlined and a ward summary opens
 - Colour the map by priority, heat, greenery, people or dust
 - Slide a canopy size to see an estimated cooling and the people it would help
 - See the 10 most urgent hexagons or wards and jump to them
@@ -44,7 +47,7 @@ web/
 ├── .env.example               variables for local development
 ├── index.html
 ├── vite.config.js             dev proxy for /api, drops the mock from builds
-├── public/mock/cells.geojson  offline sample data
+├── public/mock/               offline sample data: cities.json, <slug>_cells.geojson
 └── src/
     ├── App.jsx
     ├── components/
@@ -54,7 +57,7 @@ web/
     │   ├── WardPanel.jsx      ward summary, ranking, AI brief
     │   ├── TopList.jsx        10 most urgent hexagons or wards
     │   ├── PlannerPanel.jsx   hectares planner
-    │   ├── Legend.jsx, ScoreInfo.jsx, SidePanel.jsx, CopyLink.jsx
+    │   ├── Legend.jsx, ScoreInfo.jsx, SidePanel.jsx, CopyLink.jsx, DemoBadge.jsx, Footer.jsx
     └── lib/
         ├── api.js             all backend calls, timeouts, fallbacks, API contract
         ├── palette.js         colour layers and scales
@@ -79,7 +82,7 @@ npm run dev
 cp .env.example .env     # then uncomment VITE_USE_MOCK=true
 ```
 
-The sample data has no ward names, so ward search, the ward panel and the ward top list stay disabled in mock mode. They work as soon as `/api/cells` returns a `ward` value on each cell.
+Mock mode reads `public/mock/cities.json` and `public/mock/<slug>_cells.geojson`: a ward-enabled city and a demo city, so you can develop without the backend. The mock files are removed from production builds.
 
 ### Scripts
 
@@ -109,16 +112,19 @@ The image builds the app and serves `dist` with Caddy from `/srv`. The site Cadd
 
 ## API contract
 
-Defined at the top of [`web/src/lib/api.js`](web/src/lib/api.js). Only `/cells` is required; every other endpoint falls back to a browser-side estimate if it fails, so a missing endpoint never breaks the app.
+All calls live in [`web/src/lib/api.js`](web/src/lib/api.js) and go to `${VITE_API_URL}` plus the path below. `<slug>` is the city id from `/cities`; no city name is hardcoded. Only `/cities` and `/cities/<slug>/cells` are required; every other endpoint falls back to a browser-side estimate if it fails. If `/cities` is not available yet, the app falls back to the old single-city routes (`/cells`, `/status`, `/whatif`) so the live site keeps working during the switch.
 
-| Endpoint | Used for |
-| --- | --- |
-| `GET /cells` | the map (GeoJSON) |
-| `GET /status` | "Data updated" badge |
-| `POST /whatif` | canopy what-if |
-| `GET /top?level=cell\|ward&n=10` | top-10 list |
-| `POST /plan` | planting planner |
-| `GET /wards/{id}/brief` | AI-generated ward brief |
+| Endpoint | Response | Used for |
+| --- | --- | --- |
+| `GET /cities` | `[{ slug, name, bbox:[w,s,e,n], center:[lng,lat], zoom, data_mode:"real"\|"demo", has_wards }]` | city dropdown, map view, demo badge |
+| `GET /cities/<slug>/cells` | GeoJSON FeatureCollection. Properties: `h3_index`, `priority`, `priority_rank`, `ndvi`, `lst_c`, `population`, `built_frac`, `dust_idx`, `school_count`, `ward`, `ward_id`, `area_name`. `ndvi`, `lst_c`, `ward`, `ward_id`, `area_name` may be null. | the map |
+| `GET /cities/<slug>/status` | `{ updated_at, sources: { name: { ok } } }` | "Data updated" badge |
+| `POST /cities/<slug>/whatif` | body `{ h3_index, canopy_ha }` returns `{ delta_c, people_benefited }` | canopy what-if |
+| `GET /cities/<slug>/top?level=cell\|ward&n=10` | `[{ id, name, priority_rank }]` | top-10 list |
+| `POST /cities/<slug>/plan` | body `{ hectares }` returns `{ cells: [h3_index], avg_cooling_c, people_reached }` | planting planner |
+| `GET /cities/<slug>/wards/<ward_id>/brief` | `{ text }` | AI-generated ward brief |
+
+Ward search, the ward outline, the ward panel and the ward top list are only shown when the city has `has_wards: true`. The ward list is built in the browser from `ward_id` and `ward` on each cell.
 
 ## Author
 

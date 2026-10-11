@@ -1,12 +1,13 @@
 import { layerGradient, legendEnds } from "../lib/palette";
 import ScoreInfo from "./ScoreInfo";
+import DemoBadge from "./DemoBadge";
 
-export default function Legend({ data, layer, hiddenOnPhone }) {
+export default function Legend({ data, layer, demo, hiddenOnPhone }) {
     const [left, right] = legendEnds(data, layer);
     return (
         <div
             className={
-                "absolute bottom-8 left-4 z-10 w-64 rounded-xl bg-white/90 p-3 text-sm shadow-lg backdrop-blur " +
+                "absolute bottom-12 left-4 z-10 w-64 rounded-xl bg-white/90 p-3 text-sm shadow-lg backdrop-blur " +
                 (hiddenOnPhone ? "hidden sm:block" : "")
             }
         >
@@ -16,6 +17,7 @@ export default function Legend({ data, layer, hiddenOnPhone }) {
                 <span>{left}</span>
                 <span>{right}</span>
             </div>
+            {demo && <DemoBadge compact className="mt-2" />}
             <div className="mt-2">
                 <ScoreInfo />
             </div>

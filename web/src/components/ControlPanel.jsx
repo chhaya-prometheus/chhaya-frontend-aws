@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { GRADIENT, LAYERS } from "../lib/palette";
 import { searchWards, wardLabel } from "../lib/wards";
+import DemoBadge from "./DemoBadge";
 import TopList from "./TopList";
 import PlannerPanel from "./PlannerPanel";
 
@@ -38,13 +39,13 @@ function WardSearch({ wardIndex, onPickWard }) {
                 value={query}
                 disabled={disabled}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder={disabled ? "Ward search not available yet" : "Search a ward or area"}
-                aria-label="Search a ward or area"
+                placeholder={disabled ? "Ward search not available yet" : "Search a ward"}
+                aria-label="Search a ward"
                 className="w-full rounded-lg border border-line bg-white px-3 py-2 disabled:bg-wash disabled:text-muted"
             />
             {query.trim() && (
                 <ul className="absolute left-4 right-4 top-full z-10 mt-1 max-h-60 overflow-y-auto rounded-lg bg-white shadow-xl ring-1 ring-black/5">
-                    {results.length === 0 && <li className="px-3 py-2 text-sm text-muted">No ward or area matches.</li>}
+                    {results.length === 0 && <li className="px-3 py-2 text-sm text-muted">No ward matches.</li>}
                     {results.map((w) => (
                         <li key={w.id}>
                             <button
@@ -66,35 +67,56 @@ function WardSearch({ wardIndex, onPickWard }) {
 }
 
 export default function ControlPanel({
-    data, wardIndex, status, layer, onLayer, tab, onTab, plan, onPlan, onPickCell, onPickWard,
+    cities, city, onCity, data, wardIndex, status, layer, onLayer, tab, onTab, plan, onPlan, onPickCell, onPickWard,
 }) {
     const [open, setOpen] = useState(() => window.innerWidth > 640);
+    const demo = city.data_mode === "demo";
 
     return (
         <div className="absolute left-4 top-4 z-10 w-[min(22rem,calc(100vw-5rem))] rounded-xl bg-white/90 shadow-lg backdrop-blur">
             <div className="overflow-hidden rounded-t-xl">
-                <div className="flex items-start justify-between gap-2 px-4 py-3">
-                    <div>
-                        <h1 className="text-xl font-bold tracking-tight">Chhaya</h1>
-                        <p className="text-sm text-muted">Where in Delhi should trees go first?</p>
+                <div className="px-4 py-3">
+                    <div className="flex items-start justify-between gap-2">
+                        <div>
+                            <h1 className="text-xl font-bold tracking-tight">Chhaya</h1>
+                            <p className="text-sm text-muted">Where in {city.name} should trees go first?</p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setOpen((o) => !o)}
+                            aria-expanded={open}
+                            className="rounded-lg border border-line px-2 py-1 text-sm font-medium hover:bg-wash"
+                        >
+                            {open ? "Hide" : "Explore"}
+                        </button>
                     </div>
-                    <button
-                        type="button"
-                        onClick={() => setOpen((o) => !o)}
-                        aria-expanded={open}
-                        className="rounded-lg border border-line px-2 py-1 text-sm font-medium hover:bg-wash"
-                    >
-                        {open ? "Hide" : "Explore"}
-                    </button>
+                    {cities.length > 1 && (
+                        <label className="mt-2 flex items-center gap-2 text-sm">
+                            <span className="text-muted">City</span>
+                            <select
+                                value={city.slug}
+                                onChange={(e) => onCity(e.target.value)}
+                                className="flex-1 rounded-lg border border-line bg-white px-2 py-1 font-medium"
+                            >
+                                {cities.map((c) => (
+                                    <option key={c.slug} value={c.slug}>
+                                        {c.name}
+                                        {c.data_mode === "demo" ? " (demo)" : ""}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                    )}
+                    {demo && <DemoBadge className="mt-2" />}
                 </div>
                 <div className="h-1" style={{ background: GRADIENT }} />
             </div>
 
-            {open && (
+            {open && data && (
                 <>
                     <StatusBadge status={status} />
                     <div className="pt-1" />
-                    <WardSearch wardIndex={wardIndex} onPickWard={onPickWard} />
+                    {city.has_wards && <WardSearch wardIndex={wardIndex} onPickWard={onPickWard} />}
 
                     <div className="mx-4 mb-3 flex gap-1 rounded-xl border border-line p-1">
                         {TABS.map(([key, label]) => (
@@ -135,9 +157,17 @@ export default function ControlPanel({
                             </div>
                         )}
                         {tab === "top" && (
-                            <TopList data={data} wardIndex={wardIndex} onPickCell={onPickCell} onPickWard={onPickWard} />
+                            <TopList
+                                key={city.slug}
+                                citySlug={city.slug}
+                                data={data}
+                                wardIndex={wardIndex}
+                                hasWards={city.has_wards}
+                                onPickCell={onPickCell}
+                                onPickWard={onPickWard}
+                            />
                         )}
-                        {tab === "plan" && <PlannerPanel data={data} plan={plan} onPlan={onPlan} />}
+                        {tab === "plan" && <PlannerPanel citySlug={city.slug} data={data} plan={plan} onPlan={onPlan} />}
                     </div>
                 </>
             )}

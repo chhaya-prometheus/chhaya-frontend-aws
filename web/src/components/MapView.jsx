@@ -1,16 +1,61 @@
 import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { cellTitle } from "../lib/format";
 import { colourExpression } from "../lib/palette";
 import { wardBounds, wardOf } from "../lib/wards";
 
 const BASEMAP = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
-const DELHI = [[76.83, 28.4], [77.35, 28.88]];
 const PANEL_SPACE = 460;
 const NONE = "__none__";
+const WARD_KEY = ["to-string", ["coalesce", ["get", "ward_id"], ["get", "ward"], ""]];
 
-function boundsOf(feature) {
-    return wardBounds([feature]);
+function extent(data, city) {
+    let w = Infinity;
+    let s = Infinity;
+    let e = -Infinity;
+    let n = -Infinity;
+    const walk = (c) => {
+        if (typeof c[0] === "number") {
+            if (c[0] < w) w = c[0];
+            if (c[0] > e) e = c[0];
+            if (c[1] < s) s = c[1];
+            if (c[1] > n) n = c[1];
+            return;
+        }
+        c.forEach(walk);
+    };
+    for (const f of data?.features ?? []) {
+        if (f.geometry?.coordinates) walk(f.geometry.coordinates);
+    }
+    if (Number.isFinite(w) && Number.isFinite(s) && Number.isFinite(e) && Number.isFinite(n)) {
+        return [w, s, e, n];
+    }
+    const b = city?.bbox;
+    if (Array.isArray(b) && b.length === 4 && b.every(Number.isFinite)) return b;
+    return null;
+}
+
+function cityView(city, data) {
+    const box = extent(data, city);
+    if (box) return { bounds: [[box[0], box[1]], [box[2], box[3]]] };
+    return { center: city?.center ?? [78, 22], zoom: city?.zoom ?? 4 };
+}
+
+function lockBounds(data, city) {
+    const box = extent(data, city);
+    if (!box) return undefined;
+    const span = Math.max(box[2] - box[0], box[3] - box[1]);
+    return [
+        [box[0] - span, box[1] - span],
+        [box[2] + span, box[3] + span],
+    ];
+}
+
+function showCity(map, city, data, duration) {
+    const view = cityView(city, data);
+    if (view.bounds) map.fitBounds(view.bounds, { padding: 50, duration });
+    else map.easeTo({ center: view.center, zoom: view.zoom, duration });
 }
 
 function padding() {
@@ -18,20 +63,26 @@ function padding() {
     return { top: 140, bottom: Math.round(window.innerHeight * 0.55) + 20, left: 30, right: 30 };
 }
 
-export default function MapView({ data, selected, ward, layer, planCells, onSelect }) {
+export default function MapView({ data, city, selected, ward, layer, planCells, onSelect }) {
     const container = useRef(null);
+    const tooltip = useRef(null);
     const mapRef = useRef(null);
+    const shown = useRef(null);
     const [ready, setReady] = useState(false);
-    const latest = useRef({ data, onSelect, layer });
-    latest.current = { data, onSelect, layer };
+    const latest = useRef({ data, onSelect, layer, city });
+    latest.current = { data, onSelect, layer, city };
 
     useEffect(() => {
+        const { data: first, city: firstCity } = latest.current;
+        const view = cityView(firstCity, first);
         const map = new maplibregl.Map({
             container: container.current,
             style: BASEMAP,
-            bounds: DELHI,
-            fitBoundsOptions: { padding: 40 },
-            maxBounds: [[76.3, 28.1], [77.9, 29.2]],
+            attributionControl: false,
+            maxBounds: lockBounds(first, firstCity),
+            ...(view.bounds
+                ? { bounds: view.bounds, fitBoundsOptions: { padding: 50 } }
+                : { center: view.center, zoom: view.zoom }),
         });
         mapRef.current = map;
         map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
@@ -41,6 +92,7 @@ export default function MapView({ data, selected, ward, layer, planCells, onSele
             const { data: d, layer: l } = latest.current;
             const firstLabel = map.getStyle().layers.find((x) => x.type === "symbol")?.id;
             map.addSource("cells", { type: "geojson", data: d });
+            shown.current = d;
             map.addLayer(
                 { id: "cells-fill", type: "fill", source: "cells", paint: { "fill-opacity": 0.7, "fill-color": colourExpression(d, l) } },
                 firstLabel,
@@ -64,7 +116,7 @@ export default function MapView({ data, selected, ward, layer, planCells, onSele
                     id: "ward-outline",
                     type: "line",
                     source: "cells",
-                    filter: ["==", ["to-string", ["get", "ward"]], NONE],
+                    filter: ["==", WARD_KEY, NONE],
                     paint: { "line-color": "#12212b", "line-width": 2.5 },
                 },
                 firstLabel,
@@ -88,11 +140,28 @@ export default function MapView({ data, selected, ward, layer, planCells, onSele
             latest.current.onSelect(hit ? hit.properties.h3_index : null);
         });
 
+        const hideTip = () => {
+            if (tooltip.current) tooltip.current.style.display = "none";
+        };
+
         map.on("mousemove", (e) => {
             if (!map.getLayer("cells-fill")) return;
-            const over = map.queryRenderedFeatures(e.point, { layers: ["cells-fill"] }).length > 0;
-            map.getCanvas().style.cursor = over ? "pointer" : "";
+            const hit = map.queryRenderedFeatures(e.point, { layers: ["cells-fill"] })[0];
+            map.getCanvas().style.cursor = hit ? "pointer" : "";
+            const el = tooltip.current;
+            if (!el) return;
+            if (!hit) {
+                hideTip();
+                return;
+            }
+            const p = hit.properties;
+            const rank = Number(p.priority_rank);
+            el.textContent = Number.isFinite(rank) ? `${cellTitle(p)} · rank ${rank.toLocaleString("en-IN")}` : cellTitle(p);
+            el.style.left = `${e.point.x + 14}px`;
+            el.style.top = `${e.point.y + 14}px`;
+            el.style.display = "block";
         });
+        map.getCanvas().addEventListener("mouseleave", hideTip);
 
         return () => {
             setReady(false);
@@ -101,13 +170,19 @@ export default function MapView({ data, selected, ward, layer, planCells, onSele
     }, []);
 
     useEffect(() => {
+        if (!ready || shown.current === data) return;
+        mapRef.current.getSource("cells").setData(data);
+        shown.current = data;
+    }, [ready, data]);
+
+    useEffect(() => {
         if (!ready) return;
         mapRef.current.setPaintProperty("cells-fill", "fill-color", colourExpression(data, layer));
     }, [ready, layer, data]);
 
     useEffect(() => {
         if (!ready) return;
-        mapRef.current.setFilter("ward-outline", ["==", ["to-string", ["get", "ward"]], ward ?? NONE]);
+        mapRef.current.setFilter("ward-outline", ["==", WARD_KEY, ward ?? NONE]);
     }, [ready, ward]);
 
     useEffect(() => {
@@ -121,16 +196,25 @@ export default function MapView({ data, selected, ward, layer, planCells, onSele
         map.setFilter("cells-selected", ["==", ["get", "h3_index"], selected ?? ""]);
         const feature = data.features.find((f) => f.properties.h3_index === selected);
         if (feature) {
-            map.fitBounds(boundsOf(feature), { padding: padding(), maxZoom: 14.5, duration: 900 });
+            map.fitBounds(wardBounds([feature]), { padding: padding(), maxZoom: 14.5, duration: 900 });
             return;
         }
         const inWard = ward ? data.features.filter((f) => wardOf(f.properties) === ward) : [];
         if (inWard.length) {
             map.fitBounds(wardBounds(inWard), { padding: padding(), maxZoom: 14, duration: 900 });
         } else {
-            map.fitBounds(DELHI, { padding: 40, duration: 900 });
+            showCity(map, city, data, 900);
         }
-    }, [ready, selected, ward, data]);
+    }, [ready, selected, ward, data, city]);
 
-    return <div ref={container} style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }} />;
+    return (
+        <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}>
+            <div ref={container} style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }} />
+            <div
+                ref={tooltip}
+                style={{ display: "none" }}
+                className="pointer-events-none absolute z-10 max-w-[16rem] rounded-md bg-ink px-2 py-1 text-xs text-white shadow-lg"
+            />
+        </div>
+    );
 }

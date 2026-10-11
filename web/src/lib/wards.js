@@ -1,4 +1,12 @@
-export const wardOf = (props) => (props.ward == null || props.ward === "" ? null : String(props.ward));
+export function wardOf(props) {
+  const v = props.ward_id ?? props.ward;
+  return v == null || v === "" ? null : String(v);
+}
+
+function wardNameOf(props) {
+  if (props.ward == null || props.ward === "") return null;
+  return props.ward_id != null || Number.isNaN(Number(props.ward)) ? String(props.ward) : null;
+}
 
 const finiteValues = (features, prop) => features.map((f) => f.properties[prop]).filter((v) => Number.isFinite(v));
 const mean = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : null);
@@ -9,10 +17,10 @@ export function buildWardIndex(data) {
   for (const f of data.features) {
     const id = wardOf(f.properties);
     if (id == null) continue;
-    if (!groups.has(id)) groups.set(id, { id, names: new Set(), features: [] });
+    if (!groups.has(id)) groups.set(id, { id, name: null, features: [] });
     const g = groups.get(id);
     g.features.push(f);
-    if (f.properties.area_name) g.names.add(f.properties.area_name);
+    g.name ??= wardNameOf(f.properties);
   }
 
   const all = data.features;
@@ -28,7 +36,7 @@ export function buildWardIndex(data) {
     const pop = mean(finiteValues(g.features, "population"));
     return {
       id: g.id,
-      names: [...g.names],
+      name: g.name,
       features: g.features,
       cells: g.features.length,
       people: sum(finiteValues(g.features, "population")),
@@ -65,11 +73,14 @@ export function searchWards(index, query, limit = 8) {
   const q = query.trim().toLowerCase();
   if (!q) return [];
   return index.wards
-    .filter((w) => w.id.toLowerCase().includes(q) || w.names.some((n) => n.toLowerCase().includes(q)))
+    .filter((w) => (w.name ?? "").toLowerCase().includes(q) || w.id.toLowerCase().includes(q))
     .slice(0, limit);
 }
 
-export const wardLabel = (w) => (w.names[0] ? `${w.names[0]} (ward ${w.id})` : `Ward ${w.id}`);
+export function wardLabel(w) {
+  if (w.name) return w.name;
+  return /^\d+$/.test(w.id) ? `Ward ${w.id}` : w.id;
+}
 
 export function wardBounds(features) {
   let minLng = Infinity;
