@@ -120,6 +120,7 @@ export default function App() {
   const demo = city?.data_mode === "demo";
 
   const changeCity = useCallback((next) => {
+    setData(null);
     setSelected(null);
     setWardId(null);
     setPlan(null);
@@ -147,6 +148,7 @@ export default function App() {
     <div className="relative h-full w-full overflow-hidden">
       {data && city && (
         <MapView
+          key={slug}
           data={data}
           city={city}
           selected={selected}

@@ -10,17 +10,51 @@ const PANEL_SPACE = 460;
 const NONE = "__none__";
 const WARD_KEY = ["to-string", ["coalesce", ["get", "ward_id"], ["get", "ward"], ""]];
 
-function cityView(city) {
-    const b = city?.bbox;
-    if (Array.isArray(b) && b.length === 4 && b.every(Number.isFinite)) {
-        return { bounds: [[b[0], b[1]], [b[2], b[3]]] };
+function extent(data, city) {
+    let w = Infinity;
+    let s = Infinity;
+    let e = -Infinity;
+    let n = -Infinity;
+    const walk = (c) => {
+        if (typeof c[0] === "number") {
+            if (c[0] < w) w = c[0];
+            if (c[0] > e) e = c[0];
+            if (c[1] < s) s = c[1];
+            if (c[1] > n) n = c[1];
+            return;
+        }
+        c.forEach(walk);
+    };
+    for (const f of data?.features ?? []) {
+        if (f.geometry?.coordinates) walk(f.geometry.coordinates);
     }
+    if (Number.isFinite(w) && Number.isFinite(s) && Number.isFinite(e) && Number.isFinite(n)) {
+        return [w, s, e, n];
+    }
+    const b = city?.bbox;
+    if (Array.isArray(b) && b.length === 4 && b.every(Number.isFinite)) return b;
+    return null;
+}
+
+function cityView(city, data) {
+    const box = extent(data, city);
+    if (box) return { bounds: [[box[0], box[1]], [box[2], box[3]]] };
     return { center: city?.center ?? [78, 22], zoom: city?.zoom ?? 4 };
 }
 
-function showCity(map, city, duration) {
-    const view = cityView(city);
-    if (view.bounds) map.fitBounds(view.bounds, { padding: 40, duration });
+function lockBounds(data, city) {
+    const box = extent(data, city);
+    if (!box) return undefined;
+    const span = Math.max(box[2] - box[0], box[3] - box[1]);
+    return [
+        [box[0] - span, box[1] - span],
+        [box[2] + span, box[3] + span],
+    ];
+}
+
+function showCity(map, city, data, duration) {
+    const view = cityView(city, data);
+    if (view.bounds) map.fitBounds(view.bounds, { padding: 50, duration });
     else map.easeTo({ center: view.center, zoom: view.zoom, duration });
 }
 
@@ -39,13 +73,15 @@ export default function MapView({ data, city, selected, ward, layer, planCells, 
     latest.current = { data, onSelect, layer, city };
 
     useEffect(() => {
-        const view = cityView(latest.current.city);
+        const { data: first, city: firstCity } = latest.current;
+        const view = cityView(firstCity, first);
         const map = new maplibregl.Map({
             container: container.current,
             style: BASEMAP,
             attributionControl: false,
+            maxBounds: lockBounds(first, firstCity),
             ...(view.bounds
-                ? { bounds: view.bounds, fitBoundsOptions: { padding: 40 } }
+                ? { bounds: view.bounds, fitBoundsOptions: { padding: 50 } }
                 : { center: view.center, zoom: view.zoom }),
         });
         mapRef.current = map;
@@ -167,7 +203,7 @@ export default function MapView({ data, city, selected, ward, layer, planCells, 
         if (inWard.length) {
             map.fitBounds(wardBounds(inWard), { padding: padding(), maxZoom: 14, duration: 900 });
         } else {
-            showCity(map, city, 900);
+            showCity(map, city, data, 900);
         }
     }, [ready, selected, ward, data, city]);
 
