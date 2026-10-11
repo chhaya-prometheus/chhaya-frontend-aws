@@ -1,131 +1,247 @@
-# Chhaya: where should cities plant trees first?
+# Chhaya Frontend AWS
 
-Chhaya (छाया, "shade") is a map of a city split into hexagonal cells, coloured by how urgently each one needs trees. Click a cell to see the numbers behind its score, search a ward, switch the colour layer, or plan where a given amount of planting land would do the most good.
+Chhaya is a web application for prioritizing urban tree planting decisions using a geospatial, data-driven map interface. The project helps city planners, analysts, and decision-makers identify where tree cover can deliver the greatest local cooling and public health benefit by combining environmental and demographic indicators into a single priority score.
 
-> **Real vs demo data.** Delhi is real data with ward names. Other cities are demo cities: a boundary-only grid with synthetic values and no wards. Demo cities are labelled "Demo data (synthetic)" in the header, legend and detail panel, and their numbers are never real findings.
->
-> **Honest claims.** The priority score is a proxy built from satellite and census data, not a measurement. Trees cool the surface; they do not clean the air. Every what-if figure is a model estimate.
+This repository contains the frontend application for the Chhaya platform. The frontend consumes a backend API and renders a map-based dashboard with city switching, hex-cell prioritization, planting planning, and score explanations.
 
-<!-- Add a screenshot: save it as docs/screenshot.png and uncomment the next line.
-![Chhaya screenshot](docs/screenshot.png)
--->
+## Why this project exists
 
-## What you can do
+Cities often have limited budgets for greening interventions. Chhaya translates that challenge into a practical planning tool:
 
-- Switch city from a dropdown (the choice is kept in the link as `?city=...`)
-- See a whole city coloured by planting priority, with a legend
-- Click a hexagon for temperature, greenery, built-up share, dust, people and schools
-- Search a ward (cities with wards only); its hexagons are outlined and a ward summary opens
-- Colour the map by priority, heat, greenery, people or dust
-- Slide a canopy size to see an estimated cooling and the people it would help
-- See the 10 most urgent hexagons or wards and jump to them
-- Enter hectares in the planner to highlight where to plant
-- Open a "How is this scored?" popover, and copy a link to any selected place
-- Works on phones: details open as a bottom sheet
+- It ranks locations by urgency for planting based on a blended score
+- It highlights areas where heat stress, low greenery, and dense population overlap
+- It allows users to test canopy scenarios and estimate cooling impact
+- It surfaces neighborhood-level context for evidence-informed decision making
 
-## Architecture
+The result is a decision-support frontend for urban tree canopy planning and climate adaptation.
 
-One domain, one server. Caddy splits by path:
+## Key features
 
+- City selector with URL-based state persistence
+- Interactive hex-grid map with prioritized planting scores
+- Search and filtering for wards or administrative regions
+- Layer switching for priority, heat, greenery, population, and dust indicators
+- Clickable map cells that reveal local metrics and factors
+- Planting planner to estimate cooling and people reached per hectares
+- Top-priority rankings for cells and wards
+- Link sharing for selected places
+- Responsive design for desktop and mobile devices
+- Mock-data mode for offline or local UI development
+
+## Architecture overview
+
+The frontend is intentionally simple and modular. It presents a single-page React application that talks to a backend via relative API routes, making it suitable for deployment behind a reverse proxy like Caddy.
+
+```text
+Browser
+  │
+  ▼
+Caddy / Reverse Proxy
+  ├── /api/*  ─────────────► Backend service (FastAPI or equivalent)
+  └── /*  ────────────────► Static build output from Vite
 ```
-browser ──► Caddy ──┬─ /api/*  ──► FastAPI (prefix stripped)
-                    └─ everything else ──► static build (web/dist)
-```
 
-The frontend only uses relative URLs such as `fetch("/api/cells")`, so there is no CORS and no base URL to configure in production.
+This design avoids CORS issues and removes the need to hardcode a base API URL during deployment.
 
 ## Tech stack
 
-React 19, Vite, MapLibre GL, Tailwind CSS, Oxlint.
+- React 19
+- Vite
+- MapLibre GL
+- Tailwind CSS
+- Oxlint
+- JavaScript (ES modules)
+- Docker support for deployment
 
-## Project structure
+## Repository structure
 
+```text
+chhaya-frontend-aws/
+├── .github/
+├── .vscode/
+├── .gitignore
+├── Readme.md
+├── LICENSE
+├── web/
+│   ├── .dockerignore
+│   ├── .env.example
+│   ├── .env.production
+│   ├── .oxlintrc.json
+│   ├── Dockerfile
+│   ├── index.html
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── postcss.config.js
+│   ├── tailwind.config.js
+│   ├── vite.config.js
+│   ├── public/
+│   │   └── mock/
+│   └── src/
+│       ├── App.jsx
+│       ├── components/
+│       │   ├── ControlPanel.jsx
+│       │   ├── DetailPanel.jsx
+│       │   ├── Footer.jsx
+│       │   ├── Legend.jsx
+│       │   ├── MapView.jsx
+│       │   ├── PlannerPanel.jsx
+│       │   ├── ScoreInfo.jsx
+│       │   ├── SidePanel.jsx
+│       │   ├── TopList.jsx
+│       │   ├── WardPanel.jsx
+│       │   └── CopyLink.jsx
+│       └── lib/
+│           ├── api.js
+│           ├── format.js
+│           ├── palette.js
+│           └── wards.js
+└── LICENSE
 ```
-web/
-├── Dockerfile                 Node 22 build, then caddy:2 serves /srv
-├── .env.production            VITE_API_URL=/api
-├── .env.example               variables for local development
-├── index.html
-├── vite.config.js             dev proxy for /api, drops the mock from builds
-├── public/mock/               offline sample data: cities.json, <slug>_cells.geojson
-└── src/
-    ├── App.jsx
-    ├── components/
-    │   ├── MapView.jsx        map, colour layers, ward outline, planner highlight
-    │   ├── ControlPanel.jsx   title, ward search, layers / top 10 / plan tabs
-    │   ├── DetailPanel.jsx    selected hexagon + what-if
-    │   ├── WardPanel.jsx      ward summary, ranking, AI brief
-    │   ├── TopList.jsx        10 most urgent hexagons or wards
-    │   ├── PlannerPanel.jsx   hectares planner
-    │   ├── Legend.jsx, ScoreInfo.jsx, SidePanel.jsx, CopyLink.jsx, DemoBadge.jsx, Footer.jsx
-    └── lib/
-        ├── api.js             all backend calls, timeouts, fallbacks, API contract
-        ├── palette.js         colour layers and scales
-        ├── wards.js           ward index, search, ranking
-        └── format.js          null-safe formatting
-```
+
+## Prerequisites
+
+Before you start, ensure you have the following installed:
+
+- Node.js 20.19 or later
+- npm
+- A browser for local development
+- Access to a compatible backend API if not using mock mode
 
 ## Getting started
 
-Requires **Node 20.19+ or 22** and npm.
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/AdityaSinghEz/chhaya-frontend-aws.git
-cd chhaya-frontend/web
+cd chhaya-frontend-aws
+```
+
+### 2. Install dependencies
+
+```bash
+cd web
 npm install
+```
+
+### 3. Start the development server
+
+```bash
 npm run dev
 ```
 
-`npm run dev` proxies `/api` to the deployed backend. To work fully offline on the sample data:
+This starts the Vite development server and enables the frontend for local development.
+
+### 4. Configure environment variables
+
+The project includes an example environment file:
 
 ```bash
-cp .env.example .env     # then uncomment VITE_USE_MOCK=true
+cp .env.example .env
 ```
 
-Mock mode reads `public/mock/cities.json` and `public/mock/<slug>_cells.geojson`: a ward-enabled city and a demo city, so you can develop without the backend. The mock files are removed from production builds.
+Then edit `.env` if needed. The app can also run in mock mode for local UI exploration without a backend.
 
-### Scripts
+## Environment variables
 
-```bash
-npm run dev       # dev server
-npm run build     # production build into web/dist
-npm run preview   # preview the build
-npm run lint      # Oxlint
-```
+The frontend uses Vite environment variables prefixed with `VITE_`.
 
-### Environment variables
-
-| Variable | Default | Meaning |
+| Variable | Example | Description |
 | --- | --- | --- |
-| `VITE_API_URL` | `/api` | API base path. `.env.production` sets it to `/api`. |
-| `VITE_USE_MOCK` | unset | `true` reads `public/mock/cells.geojson` and computes everything in the browser. Production builds never use the mock unless this is set. |
+| `VITE_API_URL` | `/api` | Base URL for the backend API |
+| `VITE_USE_MOCK` | `true` | Enables mock data mode for browser-only local development |
 
-Only public values belong here: anything starting with `VITE_` is bundled into the browser build.
+The default production config sets the API to `/api`, which works well behind a proxy layer.
 
-## Deploying
+## Mock mode
+
+Mock mode is useful for UI testing or development when the backend is not available.
+
+```bash
+cp .env.example .env
+```
+
+Then enable the mock option in the local environment configuration. The app reads mock city and cell data from the `public/mock` folder so that the interface can be developed offline.
+
+## Available scripts
+
+From the `web` directory:
+
+```bash
+npm run dev      # Start the Vite dev server
+npm run build    # Build the production bundle
+npm run preview  # Preview the production build locally
+npm run lint     # Run lint checks with Oxlint
+```
+
+## Production build
+
+```bash
+cd web
+npm run build
+```
+
+The generated static bundle is suitable for serving through a CDN or a server-side reverse proxy.
+
+## Docker deployment
+
+The repository includes a Dockerfile for the frontend app.
 
 ```bash
 docker build -t chhaya-web web
 ```
 
-The image builds the app and serves `dist` with Caddy from `/srv`. The site Caddyfile on the server must route `/api/*` to FastAPI and add `encode zstd gzip` (the `/api/cells` payload is over 1 MB).
+This build compiles the static frontend and serves it from a lightweight Caddy-based web server.
 
-## API contract
+## API interaction model
 
-All calls live in [`web/src/lib/api.js`](web/src/lib/api.js) and go to `${VITE_API_URL}` plus the path below. `<slug>` is the city id from `/cities`; no city name is hardcoded. Only `/cities` and `/cities/<slug>/cells` are required; every other endpoint falls back to a browser-side estimate if it fails. If `/cities` is not available yet, the app falls back to the old single-city routes (`/cells`, `/status`, `/whatif`) so the live site keeps working during the switch.
+The frontend communicates with the backend through a small API layer in `web/src/lib/api.js`.
 
-| Endpoint | Response | Used for |
-| --- | --- | --- |
-| `GET /cities` | `[{ slug, name, bbox:[w,s,e,n], center:[lng,lat], zoom, data_mode:"real"\|"demo", has_wards }]` | city dropdown, map view, demo badge |
-| `GET /cities/<slug>/cells` | GeoJSON FeatureCollection. Properties: `h3_index`, `priority`, `priority_rank`, `ndvi`, `lst_c`, `population`, `built_frac`, `dust_idx`, `school_count`, `ward`, `ward_id`, `area_name`. `ndvi`, `lst_c`, `ward`, `ward_id`, `area_name` may be null. | the map |
-| `GET /cities/<slug>/status` | `{ updated_at, sources: { name: { ok } } }` | "Data updated" badge |
-| `POST /cities/<slug>/whatif` | body `{ h3_index, canopy_ha }` returns `{ delta_c, people_benefited }` | canopy what-if |
-| `GET /cities/<slug>/top?level=cell\|ward&n=10` | `[{ id, name, priority_rank }]` | top-10 list |
-| `POST /cities/<slug>/plan` | body `{ hectares }` returns `{ cells: [h3_index], avg_cooling_c, people_reached }` | planting planner |
-| `GET /cities/<slug>/wards/<ward_id>/brief` | `{ text }` | AI-generated ward brief |
+Typical endpoints include:
 
-Ward search, the ward outline, the ward panel and the ward top list are only shown when the city has `has_wards: true`. The ward list is built in the browser from `ward_id` and `ward` on each cell.
+- `GET /cities` — return city metadata and map configuration
+- `GET /cities/<slug>/cells` — fetch the hex-grid geometry and scoring data
+- `GET /cities/<slug>/status` — return refresh or data health status
+- `POST /cities/<slug>/whatif` — estimate cooling impact for a canopy scenario
+- `GET /cities/<slug>/top` — get the highest-priority cells or wards
+- `POST /cities/<slug>/plan` — compute a planting plan for a given area
+- `GET /cities/<slug>/wards/<ward_id>/brief` — get a neighborhood summary
+
+The frontend is designed to call relative URLs like `/api/...`, which makes the deployment configuration cleaner and avoids cross-origin issues.
+
+## Data and model caveats
+
+The app presents a scoring model for prioritizing interventions and should be interpreted as a decision-support tool rather than a precise direct measurement of urban performance.
+
+Important considerations:
+
+- Scores are derived from environmental and demographic proxy data
+- Model outputs are best used for comparison and prioritization, not absolute truth
+- Real and synthetic datasets are handled separately, with demo data clearly labeled
+- The UI is designed to explain the factors behind each score so users can evaluate assumptions
+
+## Contributing
+
+Contributions are welcome. If you want to improve the app:
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run lint and build checks
+5. Submit a pull request with a clear explanation of the improvement
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ## Author
 
-Made by [Aditya Singh](https://github.com/AdityaSinghEz).
+Project maintainer: Aditya Singh
+
+- GitHub: https://github.com/AdityaSinghEz
+- Repository: https://github.com/AdityaSinghEz/chhaya-frontend-aws
+
+## Notes
+
+This repository focuses on the frontend layer for Chhaya. To run the full application end-to-end, you will typically pair it with the corresponding backend service that exposes the `/api` endpoints used by the UI.
+
+If you are deploying this in production, make sure the reverse proxy or hosting environment routes backend requests correctly and exposes the static frontend build without breaking the relative API paths.
