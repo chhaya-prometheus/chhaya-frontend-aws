@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { localEstimate, whatIf } from "../lib/api";
-import { fmt, inr } from "../lib/format";
+import { cellTitle, fmt, inr } from "../lib/format";
 import { bandFor } from "../lib/palette";
 import SidePanel from "./SidePanel";
 import CopyLink from "./CopyLink";
+import DemoBadge from "./DemoBadge";
 
 const DEBOUNCE_MS = 250;
 
-export default function DetailPanel({ cell, total, onClose }) {
+export default function DetailPanel({ citySlug, demo, cell, total, onClose }) {
     const [hectares, setHectares] = useState(1);
     const [result, setResult] = useState(null);
 
@@ -19,7 +20,7 @@ export default function DetailPanel({ cell, total, onClose }) {
         if (!cell) return;
         let outdated = false;
         const timer = setTimeout(() => {
-            whatIf(cell, hectares)
+            whatIf(citySlug, cell, hectares)
                 .catch(() => localEstimate(cell, hectares))
                 .then((r) => {
                     if (!outdated) setResult(r);
@@ -29,7 +30,7 @@ export default function DetailPanel({ cell, total, onClose }) {
             outdated = true;
             clearTimeout(timer);
         };
-    }, [cell, hectares]);
+    }, [citySlug, cell, hectares]);
 
     const band = bandFor(c?.priority_rank, total);
 
@@ -49,7 +50,8 @@ export default function DetailPanel({ cell, total, onClose }) {
         <SidePanel open={!!cell} accent={band.colour} onClose={onClose}>
             {c && (
                 <>
-                    <p className="pr-10 text-sm text-muted">{c.area_name ?? c.ward ?? "Area name not available yet"}</p>
+                    <p className="pr-10 text-lg font-semibold leading-snug">{cellTitle(c)}</p>
+                    {demo && <DemoBadge className="mt-1" />}
                     <p className="mt-3 text-sm font-medium text-muted">Priority rank</p>
                     <p className="text-5xl font-bold tracking-tight">
                         {inr(c.priority_rank)}
@@ -59,7 +61,7 @@ export default function DetailPanel({ cell, total, onClose }) {
                         <span className="inline-block h-3 w-3 rounded-full ring-1 ring-black/10" style={{ background: band.colour }} />
                         {band.label}
                     </p>
-                    <p className="text-sm text-muted">Rank 1 is the most urgent area in Delhi.</p>
+                    <p className="text-sm text-muted">Rank 1 is the most urgent area in this city.</p>
                     <div className="mt-2">
                         <CopyLink />
                     </div>

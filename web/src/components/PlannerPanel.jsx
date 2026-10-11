@@ -2,7 +2,7 @@ import { useState } from "react";
 import { PLAN_HA_PER_CELL, getPlan } from "../lib/api";
 import { inr } from "../lib/format";
 
-export default function PlannerPanel({ data, plan, onPlan }) {
+export default function PlannerPanel({ citySlug, data, plan, onPlan }) {
     const [hectares, setHectares] = useState(50);
     const [busy, setBusy] = useState(false);
 
@@ -13,7 +13,7 @@ export default function PlannerPanel({ data, plan, onPlan }) {
         e.preventDefault();
         if (!valid) return;
         setBusy(true);
-        onPlan(await getPlan(data, hectares));
+        onPlan(await getPlan(citySlug, data, hectares));
         setBusy(false);
     }
 

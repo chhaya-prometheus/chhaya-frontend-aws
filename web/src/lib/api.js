@@ -1,5 +1,22 @@
+import { cellTitle } from "./format";
+import { wardLabel } from "./wards";
+
 export const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
 const BASE = import.meta.env.VITE_API_URL ?? "/api";
+
+const LEGACY_CITY = {
+  slug: "delhi",
+  name: "Delhi",
+  bbox: [76.83, 28.4, 77.35, 28.88],
+  center: [77.1, 28.64],
+  zoom: 10,
+  data_mode: "real",
+  has_wards: false,
+};
+
+let legacy = false;
+
+const route = (slug, path) => (legacy ? path : `/cities/${encodeURIComponent(slug)}${path}`);
 
 async function request(path, { method = "GET", body, timeout = 15000 } = {}) {
   const controller = new AbortController();
@@ -22,6 +39,30 @@ async function request(path, { method = "GET", body, timeout = 15000 } = {}) {
     throw e;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+async function readMock(path) {
+  const res = await fetch(path);
+  if (!res.ok) throw new Error(`Could not load ${path} (status ${res.status})`);
+  return res.json();
+}
+
+function validCities(list) {
+  const cities = Array.isArray(list) ? list.filter((c) => c && typeof c.slug === "string" && c.slug) : [];
+  if (!cities.length) throw new Error("No cities available");
+  return cities.map((c) => ({ ...c, name: c.name || c.slug, has_wards: c.has_wards === true }));
+}
+
+export async function getCities() {
+  if (USE_MOCK) return validCities(await readMock("/mock/cities.json"));
+  try {
+    const cities = validCities(await request("/cities", { timeout: 10000 }));
+    legacy = false;
+    return cities;
+  } catch {
+    legacy = true;
+    return [LEGACY_CITY];
   }
 }
 
@@ -50,27 +91,25 @@ function withRank(input) {
   };
 }
 
-export async function getCells() {
+export async function getCells(slug) {
   let data;
   if (USE_MOCK) {
-    const res = await fetch("/mock/cells.geojson");
-    if (!res.ok) throw new Error(`Could not load the map data (status ${res.status})`);
-    data = await res.json();
+    data = await readMock(`/mock/${slug}_cells.geojson`);
   } else {
     try {
-      data = await request("/cells", { timeout: 30000 });
+      data = await request(route(slug, "/cells"), { timeout: 30000 });
     } catch (e) {
       throw new Error(`Could not load the map data. ${e.message}`);
     }
   }
+  if (!Array.isArray(data?.features)) throw new Error("Could not load the map data. Unexpected response.");
   return withRank(data);
 }
 
-
-export async function getStatus() {
+export async function getStatus(slug) {
   if (USE_MOCK) return null;
   try {
-    const s = await request("/status", { timeout: 8000 });
+    const s = await request(route(slug, "/status"), { timeout: 8000 });
     const raw = s?.sources ?? {};
     const list = Array.isArray(raw) ? raw : Object.entries(raw).map(([name, v]) => ({ name, ...v }));
     return {
@@ -82,7 +121,6 @@ export async function getStatus() {
   }
 }
 
-
 export function localEstimate(cell, hectares) {
   const ndvi = Number.isFinite(cell.ndvi) ? cell.ndvi : 0.2;
   const population = Number.isFinite(cell.population) ? cell.population : 0;
@@ -93,9 +131,9 @@ export function localEstimate(cell, hectares) {
   };
 }
 
-export async function whatIf(cell, hectares) {
+export async function whatIf(slug, cell, hectares) {
   if (USE_MOCK) return localEstimate(cell, hectares);
-  const r = await request("/whatif", {
+  const r = await request(route(slug, "/whatif"), {
     method: "POST",
     body: { h3_index: cell.h3_index, canopy_ha: hectares },
     timeout: 6000,
@@ -106,42 +144,32 @@ export async function whatIf(cell, hectares) {
   return r;
 }
 
-
 function clientTop(data, wardIndex, level, n) {
   if (level === "ward") {
-    return wardIndex.wards.slice(0, n).map((w) => ({
-      id: w.id,
-      name: w.names[0] ? `${w.names[0]} (ward ${w.id})` : `Ward ${w.id}`,
-      rank: w.rank,
-    }));
+    return wardIndex.wards.slice(0, n).map((w) => ({ id: w.id, name: wardLabel(w), rank: w.rank }));
   }
   return data.features
     .filter((f) => Number.isFinite(f.properties.priority_rank))
     .sort((a, b) => a.properties.priority_rank - b.properties.priority_rank)
     .slice(0, n)
-    .map((f) => ({
-      id: f.properties.h3_index,
-      name: f.properties.area_name ?? (f.properties.ward != null ? `Ward ${f.properties.ward}` : "Unnamed area"),
-      rank: f.properties.priority_rank,
-    }));
+    .map((f) => ({ id: f.properties.h3_index, name: cellTitle(f.properties), rank: f.properties.priority_rank }));
 }
 
-export async function getTop(data, wardIndex, level = "cell", n = 10) {
+export async function getTop(slug, data, wardIndex, level = "cell", n = 10) {
   if (!USE_MOCK) {
     try {
-      const r = await request(`/top?level=${level}&n=${n}`, { timeout: 6000 });
-      const known =
-        level === "ward"
-          ? new Set(wardIndex.wards.map((w) => w.id))
-          : new Set(data.features.map((f) => f.properties.h3_index));
-      const items = (Array.isArray(r) ? r : r?.items ?? []).map((x) => ({
-        id: String(x.id ?? x.h3_index ?? x.ward),
-        name: x.name ?? x.area_name ?? `Ward ${x.id ?? x.ward}`,
-        rank: x.priority_rank ?? x.rank,
-      }));
+      const r = await request(route(slug, `/top?level=${level}&n=${n}`), { timeout: 6000 });
+      const cells = new Map(data.features.map((f) => [f.properties.h3_index, f.properties]));
+      const known = level === "ward" ? wardIndex.byId : cells;
+      const items = (Array.isArray(r) ? r : r?.items ?? []).map((x) => {
+        const id = String(x.id ?? x.h3_index ?? x.ward_id ?? x.ward);
+        const ward = wardIndex.byId.get(id);
+        const name = level === "ward" ? (ward ? wardLabel(ward) : x.name ?? id) : cellTitle(cells.get(id) ?? { h3_index: id });
+        return { id, name, rank: x.priority_rank ?? x.ward_rank ?? x.rank };
+      });
       if (items.length && items.every((x) => known.has(x.id))) return items;
-    } catch {
-      /* fall through to the browser-side list */
+    } catch (e) {
+      console.warn("Using the browser-side top list:", e.message);
     }
   }
   return clientTop(data, wardIndex, level, n);
@@ -170,28 +198,29 @@ function clientPlan(data, hectares) {
   };
 }
 
-export async function getPlan(data, hectares) {
+export async function getPlan(slug, data, hectares) {
   if (!USE_MOCK) {
     try {
-      const r = await request("/plan", { method: "POST", body: { hectares }, timeout: 8000 });
+      const r = await request(route(slug, "/plan"), { method: "POST", body: { hectares }, timeout: 8000 });
       const known = new Set(data.features.map((f) => f.properties.h3_index));
       if (
         Array.isArray(r?.cells) &&
         r.cells.length &&
         r.cells.every((id) => known.has(id)) &&
-        Number.isFinite(r.people_reached)
+        Number.isFinite(r.people_reached) &&
+        Number.isFinite(r.avg_cooling_c)
       ) {
         return { ...r, source: "server" };
       }
-    } catch {
-      /* fall through to the greedy browser plan */
+    } catch (e) {
+      console.warn("Using the browser-side plan:", e.message);
     }
   }
   return clientPlan(data, hectares);
 }
 
-export async function getBrief(wardId) {
-  const r = await request(`/wards/${encodeURIComponent(wardId)}/brief`, { timeout: 20000 });
+export async function getBrief(slug, wardId) {
+  const r = await request(route(slug, `/wards/${encodeURIComponent(wardId)}/brief`), { timeout: 20000 });
   if (typeof r?.text !== "string" || !r.text.trim()) throw new Error("No brief available");
   return r.text;
 }

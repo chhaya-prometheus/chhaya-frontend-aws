@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { getBrief } from "../lib/api";
-import { fmt, inr } from "../lib/format";
+import { cellTitle, fmt, inr } from "../lib/format";
 import { bandFor } from "../lib/palette";
 import { wardLabel } from "../lib/wards";
 import SidePanel from "./SidePanel";
 import CopyLink from "./CopyLink";
 
-export default function WardPanel({ ward, wardCount, total, onClose, onPickCell }) {
+export default function WardPanel({ citySlug, ward, wardCount, total, onClose, onPickCell }) {
     const last = useRef(ward);
     if (ward) last.current = ward;
     const w = last.current;
@@ -20,7 +20,7 @@ export default function WardPanel({ ward, wardCount, total, onClose, onPickCell 
     async function loadBrief() {
         setBrief({ state: "loading", text: "" });
         try {
-            setBrief({ state: "done", text: await getBrief(w.id) });
+            setBrief({ state: "done", text: await getBrief(citySlug, w.id) });
         } catch {
             setBrief({ state: "error", text: "" });
         }
@@ -76,7 +76,7 @@ export default function WardPanel({ ward, wardCount, total, onClose, onPickCell 
                                         onClick={() => onPickCell(f.properties.h3_index)}
                                         className="flex w-full justify-between rounded-lg px-2 py-1.5 text-left hover:bg-wash"
                                     >
-                                        <span>{f.properties.area_name ?? "Hex"}</span>
+                                        <span>{cellTitle(f.properties)}</span>
                                         <span className="text-muted">Rank {inr(f.properties.priority_rank)}</span>
                                     </button>
                                 </li>

@@ -1,22 +1,22 @@
 import { useEffect, useState } from "react";
 import { getTop } from "../lib/api";
 
-export default function TopList({ data, wardIndex, onPickCell, onPickWard }) {
-    const hasWards = wardIndex.wards.length > 0;
+export default function TopList({ citySlug, data, wardIndex, hasWards, onPickCell, onPickWard }) {
     const [level, setLevel] = useState("cell");
     const [items, setItems] = useState(null);
 
-    const active = level === "ward" && hasWards ? "ward" : "cell";
+    const wardsReady = hasWards && wardIndex.wards.length > 0;
+    const active = level === "ward" && wardsReady ? "ward" : "cell";
 
     useEffect(() => {
         let outdated = false;
-        getTop(data, wardIndex, active, 10).then((r) => {
+        getTop(citySlug, data, wardIndex, active, 10).then((r) => {
             if (!outdated) setItems(r);
         });
         return () => {
             outdated = true;
         };
-    }, [data, wardIndex, active]);
+    }, [citySlug, data, wardIndex, active]);
 
     const tab = (key, label, disabled) => (
         <button
@@ -38,11 +38,13 @@ export default function TopList({ data, wardIndex, onPickCell, onPickWard }) {
     return (
         <div>
             <p className="mb-2 font-medium">Start here: the 10 most urgent</p>
-            <div className="mb-2 flex gap-1 rounded-xl border border-line p-1">
-                {tab("cell", "Hexes", false)}
-                {tab("ward", "Wards", !hasWards)}
-            </div>
-            {!hasWards && <p className="mb-2 text-sm text-muted">Ward data is not available yet.</p>}
+            {hasWards && (
+                <div className="mb-2 flex gap-1 rounded-xl border border-line p-1">
+                    {tab("cell", "Hexes", false)}
+                    {tab("ward", "Wards", !wardsReady)}
+                </div>
+            )}
+            {hasWards && !wardsReady && <p className="mb-2 text-sm text-muted">Ward data is not available yet.</p>}
             {items === null && <p className="text-sm text-muted">Loading…</p>}
             <ol className="max-h-64 space-y-0.5 overflow-y-auto">
                 {items?.map((it, i) => (

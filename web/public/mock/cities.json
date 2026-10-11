@@ -1,0 +1,36 @@
+[
+  {
+    "slug": "delhi",
+    "name": "Delhi",
+    "bbox": [
+      76.83,
+      28.4,
+      77.35,
+      28.88
+    ],
+    "center": [
+      77.1,
+      28.64
+    ],
+    "zoom": 10,
+    "data_mode": "real",
+    "has_wards": true
+  },
+  {
+    "slug": "mumbai",
+    "name": "Mumbai",
+    "bbox": [
+      72.77,
+      18.89,
+      73.0,
+      19.27
+    ],
+    "center": [
+      72.88,
+      19.08
+    ],
+    "zoom": 10,
+    "data_mode": "demo",
+    "has_wards": false
+  }
+]

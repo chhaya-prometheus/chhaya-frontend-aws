@@ -4,7 +4,8 @@ import DetailPanel from "./components/DetailPanel";
 import WardPanel from "./components/WardPanel";
 import ControlPanel from "./components/ControlPanel";
 import Legend from "./components/Legend";
-import { getCells, getStatus } from "./lib/api";
+import Footer from "./components/Footer";
+import { getCells, getCities, getStatus } from "./lib/api";
 import { layerByKey } from "./lib/palette";
 import { buildWardIndex, wardOf } from "./lib/wards";
 
@@ -15,14 +16,21 @@ function Spinner() {
   return (
     <div className={notice + " flex items-center gap-3"} role="status">
       <span className="h-5 w-5 animate-spin rounded-full border-2 border-line border-t-accent" />
-      Loading Delhi…
+      Loading…
     </div>
   );
+}
+
+function pickDefault(cities, wanted) {
+  if (cities.some((c) => c.slug === wanted)) return wanted;
+  return (cities.find((c) => c.data_mode === "real") ?? cities[0]).slug;
 }
 
 export default function App() {
   const initial = useMemo(() => new URLSearchParams(window.location.search), []);
 
+  const [cities, setCities] = useState(null);
+  const [citySlug, setCitySlug] = useState(initial.get("city"));
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [attempt, setAttempt] = useState(0);
@@ -37,9 +45,11 @@ export default function App() {
   useEffect(() => {
     let outdated = false;
     setError(null);
-    getCells()
-      .then((d) => {
-        if (!outdated) setData(d);
+    getCities()
+      .then((list) => {
+        if (outdated) return;
+        setCities(list);
+        setCitySlug((current) => pickDefault(list, current));
       })
       .catch((e) => {
         if (!outdated) setError(e.message);
@@ -49,9 +59,37 @@ export default function App() {
     };
   }, [attempt]);
 
+  const city = cities?.find((c) => c.slug === citySlug) ?? null;
+  const slug = city?.slug ?? null;
+
   useEffect(() => {
-    getStatus().then(setStatus);
-  }, []);
+    if (!slug) return;
+    let outdated = false;
+    setData(null);
+    setError(null);
+    getCells(slug)
+      .then((d) => {
+        if (!outdated) setData(d);
+      })
+      .catch((e) => {
+        if (!outdated) setError(e.message);
+      });
+    return () => {
+      outdated = true;
+    };
+  }, [slug, attempt]);
+
+  useEffect(() => {
+    if (!slug) return;
+    let outdated = false;
+    setStatus(null);
+    getStatus(slug).then((s) => {
+      if (!outdated) setStatus(s);
+    });
+    return () => {
+      outdated = true;
+    };
+  }, [slug]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -65,18 +103,28 @@ export default function App() {
 
   useEffect(() => {
     const params = new URLSearchParams();
+    if (slug) params.set("city", slug);
     if (selected) params.set("cell", selected);
     if (wardId) params.set("ward", wardId);
     const query = params.toString();
     window.history.replaceState(null, "", query ? `?${query}` : window.location.pathname);
-  }, [selected, wardId]);
+  }, [slug, selected, wardId]);
 
-  const wardIndex = useMemo(() => (data ? buildWardIndex(data) : EMPTY_INDEX), [data]);
+  const hasWards = city?.has_wards === true;
+  const wardIndex = useMemo(() => (data && hasWards ? buildWardIndex(data) : EMPTY_INDEX), [data, hasWards]);
 
   const cell = data?.features.find((f) => f.properties.h3_index === selected)?.properties ?? null;
-  const ward = wardId ? wardIndex.byId.get(wardId) ?? null : null;
+  const ward = hasWards && wardId ? wardIndex.byId.get(wardId) ?? null : null;
   const total = data?.features.length ?? 0;
   const layer = layerByKey(layerKey);
+  const demo = city?.data_mode === "demo";
+
+  const changeCity = useCallback((next) => {
+    setSelected(null);
+    setWardId(null);
+    setPlan(null);
+    setCitySlug(next);
+  }, []);
 
   const selectCell = useCallback(
     (id) => {
@@ -97,9 +145,10 @@ export default function App() {
 
   return (
     <div className="relative h-full w-full overflow-hidden">
-      {data && (
+      {data && city && (
         <MapView
           data={data}
+          city={city}
           selected={selected}
           ward={ward ? ward.id : null}
           layer={layer}
@@ -108,8 +157,11 @@ export default function App() {
         />
       )}
 
-      {data && (
+      {city && (
         <ControlPanel
+          cities={cities}
+          city={city}
+          onCity={changeCity}
           data={data}
           wardIndex={wardIndex}
           status={status}
@@ -124,7 +176,7 @@ export default function App() {
         />
       )}
 
-      {data && <Legend data={data} layer={layer} hiddenOnPhone={panelOpen} />}
+      {data && <Legend data={data} layer={layer} demo={demo} hiddenOnPhone={panelOpen} />}
 
       {!data && !error && <Spinner />}
       {error && (
@@ -141,13 +193,15 @@ export default function App() {
       )}
 
       <WardPanel
+        citySlug={slug}
         ward={cell ? null : ward}
         wardCount={wardIndex.wards.length}
         total={total}
         onClose={() => setWardId(null)}
         onPickCell={selectCell}
       />
-      <DetailPanel cell={cell} total={total} onClose={() => setSelected(null)} />
+      <DetailPanel citySlug={slug} demo={demo} cell={cell} total={total} onClose={() => setSelected(null)} />
+      <Footer />
     </div>
   );
 }

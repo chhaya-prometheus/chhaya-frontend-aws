@@ -16,7 +16,7 @@ export default function SidePanel({ open, accent, onClose, children }) {
             }
         >
             <div className="h-1.5" style={{ background: accent }} />
-            <div className="relative p-6">
+            <div className="relative p-6 pb-12">
                 <button
                     type="button"
                     onClick={onClose}
